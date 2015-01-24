@@ -1,0 +1,35 @@
+#stage{
+
+	width: 100px;
+	left: 625px;
+	top: 50px;
+	position: absolute;
+
+}
+
+#points{
+
+	width: 100px;
+	left: 625px;
+	top: 100px;
+	position: absolute;
+	
+}
+
+#stageTime{
+
+	width: 100px;
+	left: 625px;
+	top: 150px;
+	position: absolute;
+	
+}
+
+#instructions{
+
+	width: 750px;
+	left: 0px;
+	top: 610px;
+	position: absolute;
+	
+}

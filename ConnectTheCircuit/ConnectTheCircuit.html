@@ -1,0 +1,532 @@
+<!--Andrija Jovanov
+	The theme of this game is "interlocking pieces"
+	This is a puzzle game where the player must swap tiles on a grid
+	until they have formed a complete path between the two designated
+	endpoint tiles which passes through specially marked node tiles.-->
+<!DOCTYPE HTML>
+<html lang = "en-US">
+
+	<head>
+
+		<meta charset = "UTF-8" />
+		<title>Connect The Circuit</title>
+		<div id="stage"></div>
+		<div id="points"></div>
+		<div id="stageTime"></div>
+		<div id="instructions">Instructions: You must make a path between the 2 "+" tiles, ensuring the path passes through the
+			                   "N" tiles. Move tiles by clicking on them and then clicking on an adjacent tile. Watch out for
+			                   the time!<br \>Note: "+" and "N" tiles are immovable.</div>
+		<link rel="stylesheet" type="text/css" href="style.css" media="screen" />
+
+		<script type = "text/javascript" src = "GameEngine.js"></script>
+		<script type = "text/javascript">
+
+			//The game world and its dimensions
+			var world;
+			var worldWidth = 750;
+			var worldHeight = 600;
+
+			var tiles;								//An array containing every tile on the grid
+			var tileLayout;							//A matrix which represents how the tiles are laid out
+			var tileWidth = 75;						//The width of each tile
+			var rowTiles = worldHeight / tileWidth;	//The number of tiles in one row/column
+			var start = new Array(2);				//The coordinates of one of the endpoint tiles
+			var isTileSelected = false;				//True if the first of a pair of tiles has been clicked
+			var selectedTile;						//The first of a pair of tiles that was clicked
+
+			var stage = 1;							//The current stage
+			var numNodes = 2;						//The number of node tiles on the grid
+			var timer;								//A timer which counts down from the start of a stage
+			var stageTime = 120;					//The amount of time to complete a stage
+			var points = 0;							//The number of points the player has accumulated
+
+			//Initializes the game
+			function init(){
+
+				var stageDiv = document.getElementById("stage");	//Displays the stage number
+				var pointsDiv = document.getElementById("points");	//Displays the point total
+				var timeDiv = document.getElementById("stageTime");	//Dusplays the time remaining
+
+				world = new World(worldWidth, worldHeight, tileWidth);
+				initTiles();
+
+				stageDiv.textContent = "Stage " + stage;
+				pointsDiv.textContent = "Points: " + points;
+				timer = new Timer(stageTime, 0);
+				timeDiv.textContent = timer.getCurrentTime() + " seconds remaining.";
+				
+				world.start();
+				timer.start();
+
+			}
+
+			//Initializes the grid and its tiles
+			function initTiles(){
+
+				var tileX = 0;
+				var tileY = 0;
+				var tileIndex = 0;
+				var tileNum = 0;
+				var badPos = false;	//True if a tile is about to be made in a place it should not go
+
+				tiles = new Array(rowTiles * rowTiles);
+				tileLayout = new Array(rowTiles);
+
+				//Creates a full grid of regular tiles
+				for(i = 0; i < rowTiles; i++){
+
+					tileLayout[i] = new Array(rowTiles);
+					for(j = 0; j < rowTiles; j++){
+
+						tileId = Math.floor((Math.random() * 6) + 1);
+						tiles[tileNum] = new Sprite(world, tileWidth, tileWidth, "images/tile" + tileId.toString() + ".png", i, j, tileId);
+						tileLayout[i][j] = tileNum;
+						tileNum++;
+
+					}
+
+				}
+
+				//Replaces "numNodes" tiles with identical node tiles
+				for(i = 0; i < numNodes; i++){
+
+					do{
+
+						tileX = Math.floor(Math.random() * rowTiles);
+						tileY = Math.floor(Math.random() * rowTiles);
+						tileIndex = tileLayout[tileX][tileY];
+						badPos = false;
+
+						/*Node tiles cannot replace non-regular tiles
+						  They are also immovable so they cannot be place somewhere that prevents
+						  other tiles from connecting to them*/
+						if(tiles[tileIndex].idNum > 6){
+
+							badPos = true;
+
+						}else if((tileX == 0 && tiles[tileIndex].leftConnect) || (tileX == rowTiles - 1 && tiles[tileIndex].rightConnect)){
+
+							badPos = true;
+
+						}else if((tileY == 0 && tiles[tileIndex].topConnect) || (tileY == rowTiles - 1 && tiles[tileIndex].bottomConnect)){
+
+							badPos = true;
+
+						}else if(isAdjacent(tileX, tileY, 7)){
+
+							badPos = true;
+
+						}
+
+					}while(badPos);
+
+					tiles[tileIndex].transform(7, "images/tile" + tiles[tileIndex].idNum.toString() + "N.png");
+
+				}
+
+				//Replaces a regular tile with an endpoint tile
+				do{
+
+					tileX = Math.floor(Math.random() * rowTiles);
+					tileY = Math.floor(Math.random() * rowTiles);
+					tileIndex = tileLayout[tileX][tileY];
+					badPos = false;
+
+					/*Endpoint tiles cannot replace non-regular tiles and cannot be adjacent to
+					  node tiles*/
+					if(tiles[tileIndex].idNum > 6){
+
+						badPos = true;
+
+					}else if(isAdjacent(tileX, tileY, 7)){
+
+						badPos = true;
+
+					}
+
+				}while(badPos);
+
+				tiles[tileIndex].transform(8, "images/tile8.png");
+				tiles[tileIndex].setConnectors(true, true, true, true);
+				/*The first endpoint tile is the one that the program will use as a starting point
+				  when checking paths*/
+				start[0] = tileX;
+				start[1] = tileY;
+
+				//Replaces another regular tile with the second endpoint
+				do{
+
+					tileX = Math.floor(Math.random() * rowTiles);
+					tileY = Math.floor(Math.random() * rowTiles);
+					tileIndex = tileLayout[tileX][tileY];
+					badPos = false;
+
+					if(tiles[tileIndex].idNum > 6){
+
+						badPos = true;
+
+					}else if(isAdjacent(tileX, tileY, 7)){
+
+						badPos = true;
+
+					}
+
+				}while(badPos);
+
+				tiles[tileIndex].transform(8, "images/tile8.png");
+				tiles[tileIndex].setConnectors(true, true, true, true);
+
+			}
+
+			//Checks if two tiles are adjacent
+			function isAdjacent(x, y, id){
+
+				var isAdjacent = false;
+
+				if(x != 0 && tiles[tileLayout[x - 1][y]].getId() == id){
+
+					isAdjacent = true;
+
+				}else if(x != rowTiles - 1 && tiles[tileLayout[x + 1][y]].getId() == id){
+
+					isAdjacent = true;
+
+				}else if(y != 0 && tiles[tileLayout[x][y - 1]].getId() == id){
+
+					isAdjacent = true;
+
+				}else if(y != rowTiles - 1 && tiles[tileLayout[x][y + 1]].getId() == id){
+
+					isAdjacent = true;
+
+				}
+
+				return isAdjacent;
+
+			}
+
+			//Called periodically
+			function update(){
+
+				var win = false; //True if the win condition has been met
+				var timeDiv = document.getElementById("stageTime");
+
+				world.erase();				//Clears the canvas
+				checkMouseActions();		//Performs an action if the mouse was clicked
+				updateTiles();				//Redraws the tiles
+				win = checkWinConditions();	//Checks if the win condition has been met
+
+				if(win)
+					nextStage();
+
+				timeDiv.textContent = timer.getCurrentTime() + " seconds remaining.";
+				//The game ends if the player runs out of time
+				if(timer.getCurrentTime() == 0){
+
+					world.stop();
+					timer.stop();
+					window.alert("You lose!");
+
+				}
+
+			}
+
+			//Updates each tile (redraws them)
+			function updateTiles(){
+
+				for(i = 0; i < tileLayout.length; i++)
+					for(j = 0; j < tileLayout[i].length; j++)
+						tiles[tileLayout[i][j]].update();
+
+			}
+
+			//Performs an action if the mouse was clicked
+			function checkMouseActions(){
+
+				var gridVal = 0;
+				var selectedX = 0;
+				var selectedY = 0;
+				var tileIndex = 0;
+
+				if(world.isMouseClicked()){
+
+					clickedSquare = world.getClickedSquare();
+
+					//Only matters if a tile on the canvas was clicked
+					if(clickedSquare[0] < rowTiles){
+
+						//Gets the coordinates of the tile that was clicked
+						tileIndex = tileLayout[clickedSquare[0]][clickedSquare[1]];
+						gridVal = world.getGridVal(clickedSquare[0], clickedSquare[1]);
+
+						if(gridVal <= 6 && clickedSquare[0] < rowTiles){
+
+							//If the first of a pair of tiles was clicked
+							if(!isTileSelected){
+
+								//Identifies the tile that was clicked
+								isTileSelected = true;
+								selectedTile = tiles[tileIndex];
+								selectedTile.setImageClicked();
+
+							//If a second tile was clicked
+							}else{
+
+								isTileSelected = false;
+								selectedTile.setImageUnclicked();
+								selectedX = selectedTile.getX();
+								selectedY = selectedTile.getY();
+
+								/*If the two tiles are adjacent, swaps them
+								  This is separated into two if statements for readability*/
+								if(clickedSquare[0] == selectedX && (clickedSquare[1] == (selectedY + 1) || clickedSquare[1] == (selectedY - 1))){
+
+									tiles[tileIndex].swap(selectedTile);
+									changePlaces(clickedSquare, [selectedX, selectedY]);
+
+								}else if(clickedSquare[1] == selectedY && (clickedSquare[0] == (selectedX + 1) || clickedSquare[0] == (selectedX - 1))){
+
+									tiles[tileIndex].swap(selectedTile);
+									changePlaces(clickedSquare, [selectedX, selectedY]);
+
+								}
+
+							}
+
+						}
+
+					}
+
+				}
+
+			}
+
+			//If two tiles are swapped, updates the tileLayout matrix
+			function changePlaces(tileOne, tileTwo){
+
+				var tempTile = 0;
+
+				tempTile = tileLayout[tileOne[0]][tileOne[1]];
+				tileLayout[tileOne[0]][tileOne[1]] = tileLayout[tileTwo[0]][tileTwo[1]];
+				tileLayout[tileTwo[0]][tileTwo[1]] = tempTile;
+
+			}
+
+			//Checks if the win condition has been met
+			function checkWinConditions(){
+
+				var done = 0;
+				var tileIndex = 0;
+				var bottomLoop = false;
+				var leftLoop = false;
+				var rightLoop  = false;
+
+				//Checks the paths originating from each of the starting tile's connectors
+				if(start[1] > 0){
+
+					tileIndex = tileLayout[start[0]][start[1] - 1];
+					if(tiles[tileIndex].bottomConnect)
+						done = checkPath(start[0], start[1] - 1, "bottom");
+
+				}
+				
+				if(done != 1 && start[1] < (rowTiles - 1)){
+				
+					tileIndex = tileLayout[start[0]][start[1] + 1];
+					if(tiles[tileIndex].topConnect)
+						done = checkPath(start[0], start[1] + 1, "top");
+
+				}
+				
+				if(done != 1 && start[0] > 0){
+
+					tileIndex = tileLayout[start[0] - 1][start[1]];
+					if(tiles[tileIndex].rightConnect)
+						done = checkPath(start[0] - 1, start[1], "right");
+
+				}
+							
+				if(done != 1 && start[0] < (rowTiles - 1)){
+				
+					tileIndex = tileLayout[start[0] + 1][start[1]];
+					if(tiles[tileIndex].leftConnect)
+						done = checkPath(start[0] + 1, start[1], "left");
+
+				}
+
+
+				if(done == 1)
+					return true;
+				else
+					return false;
+
+			}
+
+			//Checks the tiles on a path, keeping track of where the previous tile is
+			function checkPath(x, y, lastTile){
+
+				var path = [];			//An array representing the path being checked
+				var checkX = x;
+				var checkY = y;
+				var tileIndex = 0;		//The index for the tile array of the current tile being checked
+				var nextIndex = 0;		//The index for the tile array of the next tile being checked
+				var done = 0;			//1 if a complete path has been found
+				var numIterations = 0;
+
+				/*There are a maximum of 64 tiles on the grid
+				  The upper bound is there to avoid infinte looping*/
+				while(done == 0 && numIterations < 64){
+
+					tileIndex = tileLayout[checkX][checkY];
+					path.push(tileIndex);
+					
+					//If the current tile is an endpoint
+					if(tiles[tileIndex].idNum == 8){
+
+						//Make sure that the path is not looping to the first endpoint
+						if(checkX == start[0] && checkY == start[1])
+							done = 2;
+						else
+							done = checkIfWin(path);
+
+					}else{
+
+						//If the current tile is connected to the one above it and that tile was not already checked
+						if(lastTile != "top" && checkY > 0 && tiles[tileIndex].topConnect){
+
+							nextIndex = tileLayout[checkX][checkY - 1];
+							if(tiles[nextIndex].bottomConnect){
+
+								checkY--;
+								lastTile = "bottom";
+
+							}
+
+						//If the current tile is connected to the one below it and that tile was not already checked
+						}else if(lastTile != "bottom" && checkY < (rowTiles - 1) && tiles[tileIndex].bottomConnect){
+
+							nextIndex = tileLayout[checkX][checkY + 1];
+							if(tiles[nextIndex].topConnect){
+
+								checkY++;
+								lastTile = "top";
+
+							}
+
+						//If the current tile is connected to the one left of it and that tile was not already checked
+						}else if(lastTile != "left" && checkX > 0 && tiles[tileIndex].leftConnect){
+
+							nextIndex = tileLayout[checkX - 1][checkY];
+							if(tiles[nextIndex].rightConnect){
+
+								checkX--;
+								lastTile = "right";
+
+							}
+
+						//If the current tile is connected to the one right of it and that tile was not already checked
+						}else if(lastTile != "right" && checkX < (rowTiles - 1) && tiles[tileIndex].rightConnect){
+
+							nextIndex = tileLayout[checkX + 1][checkY];
+							if(tiles[nextIndex].leftConnect){
+
+								checkX++;
+								lastTile = "left";
+
+							}
+
+						}else
+							done = 3;
+
+					}
+					numIterations++;
+					
+				}
+				
+				path.length = 0;
+
+				return done;
+
+			}
+
+			//Checks if the path passes through all of the nodes
+			function checkIfWin(path){
+
+				var nodesFound = 0;
+				var done = 0;
+
+				//Iterates through the path, counting every node
+				for(i = 1; i < path.length - 1; i++)
+					if(tiles[path[i]].idNum == 7)
+						nodesFound++;
+
+				//The player wins if each node was found on the path
+				if(nodesFound == numNodes)
+					done = 1;
+				else
+					done = 2;
+
+				return done;
+
+			}
+
+			/*Advances to the next stage
+			  The number of stages are infinite but the difficulty increases*/
+			function nextStage(){
+
+				var stageDiv = document.getElementById("stage");
+				var pointsDiv = document.getElementById("points");
+				var timeElapsed = 0;
+
+				//Reduces the amount of time available for each stage to a minimum of one minute
+				if(stageTime > 60)
+					stageTime = stageTime - 10;
+
+				//Increments the stage
+				window.alert("You Win!");
+				stage++;
+				stageDiv.textContent = "Stage " + stage;
+
+				//Calculates points earned for the stage based on time remaining
+				timeRemaining = timer.getCurrentTime();
+				points = points + (timeRemaining * (stage * 10));
+				pointsDiv.textContent = "Points: " + points;
+
+				/*At stage three, the number of nodes increases to three
+				  At stage eight, the number of nodes increases to four
+				  In both cases, the time available resets to two minutes*/
+				if(stage > 2 && stage < 7){
+
+					numNodes = 3;
+					if(stage == 3)
+						stageTime = 120;
+
+				}else if(stage >= 7){
+
+					numNodes = 4;
+					if(stage == 7)
+						stageTime = 120;
+
+				}
+				timer.setCurrentTime(stageTime);
+
+				//Resets the arrays
+				tiles.length = 0;
+				for(i = 0; i < tileLayout.length; i++)
+					tileLayout[i].length = 0;
+				tileLayout.length = 0;
+
+				//Makes a new grid
+				initTiles();
+				
+			}
+
+		</script>
+
+	</head>
+
+	<body onload = "init()">
+
+	</body>
+
+</html>
