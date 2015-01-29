@@ -77,8 +77,6 @@ int main(){
     int bg = 0;
     int x, y;
     int keys = 0;
-    int sx = 0;
-    int sy = 0;
     int width = 640;            //Width of the world
     int height = 640;           //Height of the world
     int relativeWidth = 32;     //Width of the map
@@ -113,31 +111,6 @@ int main(){
     while(1){
 
 		swiWaitForVBlank();
-
-		scanKeys();
-        keys = keysHeld();
-
-        //Scroll if the directional keys are held
-        if(keys & KEY_UP)
-            sy--;
-        if(keys & KEY_DOWN)
-            sy++;
-        if(keys & KEY_LEFT)
-            sx--;
-        if(keys & KEY_RIGHT)
-            sx++;
-
-        if(sx < 0)
-            sx = 0;
-        if(sx >= width - 256)
-            sx = width - 1 - 256;
-        if(sy < 0)
-            sy = 0;
-        if(sy >= height - 192)
-            sy = height - 1 - 192;
-
-        bgSetScroll(bg, sx, sy);
-        bgUpdate();
 
         if(keysDown() & KEY_B)
             break;
