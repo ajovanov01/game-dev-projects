@@ -1,0 +1,637 @@
+<!DOCTYPE HTML>
+<html lang = "en-US">
+
+	<head>
+
+		<meta charset = "UTF-8" />
+		<title>Try Not To Drown</title>
+		<div id="instructions">Instructions:<br \>Use the arrow keys to move and dig your tunnel.<br \>
+			                   Try to find the hidden treasure but watch out for water and the digging mob.</div>
+		<link rel="stylesheet" type="text/css" href="style.css" media="screen" />
+
+		<script type = "text/javascript" src = "GameEngine.js"></script>
+		<script type = "text/javascript">
+
+			PLAYER = 1; MOB = 2; DIRT = 3; WATER = 4; TREASURE = 5; NONE = 6;
+			FACE_DOWN = 0; FACE_LEFT = 1; FACE_RIGHT = 2; FACE_UP = 3;
+
+			var world = null;
+			var worldWidth = 1600;
+			var worldHeight = 1600;
+			var canvasWidth = 480;
+			var canvasHeight = 400;
+			var tileWidth = 1;
+
+			var player = null;
+
+			var mob = null;
+			var mobDirection = 0;
+			var mobFrames = 0;
+			var mobFramesMax = 0;
+
+			var blocks = null;
+			var blockWidth = 40;
+			var blockHeight = 40;
+			var waterSpeed = 5;
+			var waterFrames = 0;
+
+			var win = false;
+			var lose = false;
+
+			function Player(){
+
+				var playerWidth = blockWidth - 5;
+				var playerHeight = blockHeight - 5;
+				var startX = 0;
+				var startY = 0;
+				var startRX = 0;
+				var startRY = 0;
+				var animOrder = [1, 0, 1, 2];
+
+				var thePlayer = new Sprite(world, playerWidth, playerHeight, "images/$Player.png", startX, startY, startRX, startRY, PLAYER);
+				thePlayer.world.initGridSprite(thePlayer);
+				thePlayer.setMoveDistance(20);
+				thePlayer.setAnimation(32, 32, 96, 128, 200, animOrder);
+				thePlayer.animTimer.startCountUp();
+				thePlayer.setCurrentRow(FACE_RIGHT);
+
+				thePlayer.keyActions = function(){
+
+					var collisionSprites = null;
+
+					if(keyPressed[LEFT]){
+
+						if(this.checkBoundary("left") != STOP){
+
+							if(this.relativeX - this.moveDistance < world.canvas.width / 2 || this.relativeX >= world.width - (world.canvas.width / 2)){
+
+								this.moveX(this.moveDistance * -1);
+
+							}else{
+
+								scroll(this.moveDistance * -1, 'x');
+								this.relativeX -= this.moveDistance;
+
+							}
+							this.changeWorldPosition();
+
+							collisionSprites = this.checkCollision("right");
+							this.collide(collisionSprites);
+							this.setCurrentRow(FACE_LEFT);
+
+						}
+
+					}
+
+					if(keyPressed[RIGHT]){
+
+						if(this.checkBoundary("right") != STOP){
+
+							if(this.relativeX < world.canvas.width / 2 || this.relativeX + this.moveDistance >= world.width - (world.canvas.width / 2)){
+
+								this.moveX(this.moveDistance);
+
+							}else{
+
+								scroll(this.moveDistance, 'x');
+								this.relativeX += this.moveDistance;
+
+							}
+							this.changeWorldPosition();
+
+							collisionSprites = this.checkCollision("left");
+							this.collide(collisionSprites);
+							this.setCurrentRow(FACE_RIGHT);
+
+						}
+
+					}
+
+					if(keyPressed[UP]){
+
+						if(this.checkBoundary("up") != STOP){
+
+							if(this.relativeY - this.moveDistance < world.canvas.height / 2 || this.relativeY >= world.height - (world.canvas.height / 2)){
+
+								this.moveY(this.moveDistance * -1);
+
+							}else{
+
+								scroll(this.moveDistance * -1, 'y');
+								this.relativeY -= this.moveDistance;
+
+							}
+							this.changeWorldPosition();
+
+							collisionSprites = this.checkCollision("bottom");
+							this.collide(collisionSprites);
+							this.setCurrentRow(FACE_UP);
+
+						}
+
+					}
+
+					if(keyPressed[DOWN]){
+
+						if(this.checkBoundary("down") != STOP){
+
+							if(this.relativeY < world.canvas.height / 2 || this.relativeY + this.moveDistance >= world.height - (world.canvas.height / 2)){
+
+								this.moveY(this.moveDistance);
+
+							}else{
+
+								scroll(this.moveDistance, 'y');
+								this.relativeY += this.moveDistance;
+
+							}
+							this.changeWorldPosition();
+
+							collisionSprites = this.checkCollision("top");
+							this.collide(collisionSprites);
+							this.setCurrentRow(FACE_DOWN);
+
+						}
+
+					}
+
+				}
+
+				thePlayer.collide = function(collisionSprites){
+
+					var i = 0;
+
+					while(collisionSprites[i] != null){
+
+						if(collisionSprites[i].idNum == DIRT){
+
+							collisionSprites[i].setId(NONE);
+							collisionSprites[i].conceal();
+
+						}else if(collisionSprites[i].idNum == WATER || collisionSprites[i].idNum == MOB){
+
+							this.touchHazard();
+
+						}else if(collisionSprites[i].idNum == TREASURE){
+
+							this.findTreasure(collisionSprites[i]);
+
+						}
+
+						i++;
+
+					}
+
+				}
+
+				thePlayer.touchHazard = function(){
+
+					lose = true;
+
+				}
+
+				thePlayer.findTreasure = function(collisionSprite){
+
+					collisionSprite.setImage("images/Treasure.png");
+					win = true;
+
+				}
+
+				return thePlayer;
+
+			}
+
+			function Mob(startRX, startRY, mobWidth, mobHeight){
+
+				var theMob = new Sprite(world, mobWidth, mobHeight, "images/Mob.png", startRX, startRY, startRX, startRY, MOB);
+				theMob.world.initGridSprite(theMob);
+				theMob.setMoveDistance(10);
+
+				theMob.move = function(){
+
+					var moveAmount = this.moveDistance;
+					var collisionDir = "";
+					var collisionSprites = null;
+
+					if(mobFrames == 0){
+
+						mobDirection = Math.floor(Math.random() * 4);
+						mobFramesMax = Math.floor((Math.random() * 16) + 5);
+						mobFrames++;
+
+					}else{
+
+						mobFrames = (mobFrames + 1) % mobFramesMax;
+
+					}
+
+					if(mobDirection < 2){
+
+						if(mobDirection == 0){
+
+							moveAmount = moveAmount * -1;
+							collisionDir = "right";
+
+						}else if(mobDirection == 1){
+
+							collisionDir = "left";
+
+						}
+
+						if((moveAmount < 0 && this.checkBoundary("left") != STOP) || (moveAmount > 0 && this.checkBoundary("right") != STOP)){
+
+							this.moveX(moveAmount);
+							this.changeWorldPosition();
+
+						}
+
+					}else{
+
+						if(mobDirection == 2){
+
+							moveAmount = moveAmount * -1;
+							collisionDir = "bottom";
+
+						}else if(mobDirection == 3){
+
+							collisionDir = "top";
+
+						}
+
+						if((moveAmount < 0 && this.checkBoundary("up") != STOP) || (moveAmount > 0 && this.checkBoundary("down") != STOP)){
+
+							this.moveY(moveAmount);
+							this.changeWorldPosition();
+
+						}
+
+					}
+
+					collisionSprites = this.checkCollision(collisionDir);
+					this.collide(collisionSprites);
+
+				}
+
+				theMob.collide = function(collisionSprites){
+
+					var i = 0;
+
+					while(collisionSprites[i] != null){
+
+						if(collisionSprites[i].idNum == DIRT){
+
+							collisionSprites[i].setId(NONE);
+							collisionSprites[i].conceal();
+
+						}else if(collisionSprites[i].idNum == TREASURE){
+
+							collisionSprites[i].setImage("images/Treasure.png");
+
+						}else if(collisionSprites[i].idNum == PLAYER){
+
+							this.touchPlayer();
+
+						}
+
+						i++;
+
+					}
+
+				}
+
+				theMob.touchPlayer = function(){
+
+					lose = true;
+
+				}
+
+				return theMob;
+
+			}
+
+			function init(){
+
+				world = new World(worldWidth, worldHeight, canvasWidth, canvasHeight, tileWidth, "grey");
+				player = new Player();
+				initBlocks();
+				initMob();
+
+				world.start();
+
+			}
+
+			function initBlocks(){
+
+				//Locations of the water and treasure
+				var waterSpotX = new Array(5);
+				var waterSpotY = new Array(5);
+				var waterSpotLen = new Array(5);
+				var waterLocX = 0;
+				var waterLocY = 0;
+
+				var treasureSpotX = 0;
+				var treasureSpotY = 0;
+				var treasureSet = false;
+
+				var numRows = worldWidth / blockWidth;
+				var numCols = worldHeight / blockHeight;
+				var i, j, k;
+
+				blocks = new Array(numRows);
+				for(i = 0; i < blocks.length; i++)
+					blocks[i] = new Array(numCols);
+
+				//Set first water area
+				waterSpotLen[0] = Math.floor((Math.random() * 4) + 3);
+				waterSpotX[0] = Math.floor((Math.random() * (numRows / 2)) + (numRows / 2)) - waterSpotLen[0];
+				waterSpotY[0] = Math.floor((Math.random() * (numCols / 2)) + waterSpotLen[0]) - waterSpotLen[0];
+
+				//Set second water area
+				waterSpotLen[1] = Math.floor((Math.random() * 4) + 3);
+				waterSpotX[1] = Math.floor((Math.random() * (numRows / 2)) + waterSpotLen[1]) - waterSpotLen[1];
+				waterSpotY[1] = Math.floor((Math.random() * (numCols / 2)) + (numCols / 2)) - waterSpotLen[1];
+
+				//Set third water area
+				waterSpotLen[2] = Math.floor((Math.random() * 4) + 3);
+				waterSpotX[2] = Math.floor((Math.random() * (numRows / 2)) + (numRows / 2)) - waterSpotLen[2];
+				waterSpotY[2] = Math.floor((Math.random() * (numCols / 2)) + (numCols / 2)) - waterSpotLen[2];
+
+				//Set fourth water area
+				waterSpotLen[3] = Math.floor((Math.random() * 4) + 3);
+				waterSpotX[3] = Math.floor((Math.random() * (numRows / 2)) + (numRows / 4)) - waterSpotLen[3];
+				waterSpotY[3] = Math.floor((Math.random() * (numCols / 2)) + (numCols / 4)) - waterSpotLen[3];
+
+				//Set fifth water area
+				waterSpotLen[4] = Math.floor((Math.random() * 4) + 3);
+				waterSpotX[4] = Math.floor((Math.random() * (numRows - waterSpotLen[4] - 2)) + waterSpotLen[4] + 2) - waterSpotLen[4];
+				waterSpotY[4] = Math.floor((Math.random() * (numCols - waterSpotLen[4] - 2)) + waterSpotLen[4] + 2) - waterSpotLen[4];
+
+				//Set all of the water blocks
+				for(i = 0; i < waterSpotX.length; i++){
+
+					waterLocX = waterSpotX[i] * blockWidth;
+					waterLocY = waterSpotY[i] * blockHeight;
+
+					for(j = waterSpotX[i]; j < waterSpotX[i] + waterSpotLen[i]; j++){
+
+						for(k = waterSpotY[i]; k < waterSpotY[i] + waterSpotLen[i]; k++){
+
+							blocks[j][k] = new Sprite(world, blockWidth, blockHeight, "images/Water.png", waterLocX, waterLocY, waterLocX, waterLocY, WATER);
+							blocks[j][k].world.initGridSprite(blocks[j][k]);
+							waterLocY = waterLocY + blockHeight;
+
+						}
+						waterLocX = waterLocX + blockWidth;
+						waterLocY = waterSpotY[i] * blockHeight;
+
+					}
+
+				}
+
+				//Set dirt blocks
+				for(i = 0; i < blocks.length; i++)
+					for(j = 0; j < blocks[i].length; j++)
+						if(blocks[i][j] == null){
+
+							blocks[i][j] = new Sprite(world, blockWidth, blockHeight, "images/Dirt.png", i * blockWidth, j * blockHeight, i * blockWidth, j * blockHeight, DIRT);
+							blocks[i][j].world.initGridSprite(blocks[i][j]);
+
+						}
+
+				while(!treasureSet){
+
+					treasureSpotX = Math.floor(Math.random() * numRows);
+					treasureSpotY = Math.floor(Math.random() * numCols);
+
+					if(treasureSpotX + treasureSpotY >= numRows - 1 && blocks[treasureSpotX][treasureSpotY].idNum == DIRT){
+
+						blocks[treasureSpotX][treasureSpotY].setId(TREASURE);
+						treasureSet = true;
+
+					}
+
+				}
+
+			}
+
+			function initMob(){
+
+				var startRX = 0;
+				var startRY = 0;
+				var mobWidth = blockWidth - 5;
+				var mobHeight = blockHeight - 5;
+				var setMob = false;
+
+				while(!setMob){
+
+					startRX = Math.floor(Math.random() * (worldWidth / blockWidth));
+					startRY = Math.floor(Math.random() * (worldHeight / blockHeight));
+
+					if((startRX != 0 || startRY != 0) && blocks[startRX][startRY].idNum == DIRT){
+
+						mob = new Mob(startRX * mobWidth, startRY * mobHeight, mobWidth, mobHeight);
+						setMob = true;
+
+					}
+
+				}
+
+			}
+
+			function update(){
+
+				var context = world.canvas.getContext("2d");
+
+				world.erase();
+
+				player.keyActions();
+				mob.move();
+				updateBlocks();
+				mob.update();
+
+				player.update();
+
+				if(win){
+
+					updateBlocks();
+					context.font = "bold 30px arial";
+					context.fillStyle = "black";
+					context.fillText("You win!", canvasWidth / 6, canvasHeight / 3);
+
+					world.stop();
+
+				}
+
+				if(lose){
+
+					updateBlocks();
+					context.font = "bold 30px arial";
+					context.fillStyle = "black";
+					context.fillText("You lose!", canvasWidth / 6, canvasHeight / 3);
+
+					world.stop();
+
+				}
+
+			}
+
+			function updateBlocks(){
+
+				var i, j, k = 0;
+				var waterIndices = new Array((worldWidth / blockWidth) * (worldHeight / blockHeight));
+				var index = 0;
+				var collisionSprites = null;
+
+				for(i = 0; i < waterIndices.length; i++)
+					waterIndices[i] = new Array(2);
+
+				for(i = 0; i < blocks.length; i++)
+					for(j = 0; j < blocks[i].length; j++)
+						if(blocks[i][j] != null){
+
+							if(blocks[i][j].alive){
+
+								if(waterFrames == 0){
+
+									if(blocks[i][j].idNum == WATER && isAdjacentEmpty(i, j)){
+
+										waterIndices[index][0] = i;
+										waterIndices[index][1] = j;
+										index++;
+
+									}
+
+								}else{
+
+									waterFrames = (waterFrames + 1) % waterSpeed;
+
+								}
+
+							}else{
+
+								blocks[i][j] = null;
+
+							}
+
+						}
+
+				for(i = 0; i < index; i++)
+					fillAdjacent(waterIndices[i][0], waterIndices[i][1]);
+
+				for(i = 0; i < blocks.length; i++)
+					for(j = 0; j < blocks[i].length; j++)
+						if(blocks[i][j] != null){
+
+							blocks[i][j].update();
+
+							if(blocks[i][j].idNum == WATER){
+
+								collisionSprites = blocks[i][j].checkCollision("all");
+								while(collisionSprites[k] != null){
+
+									if(collisionSprites[k].idNum == PLAYER)
+										lose = true;
+									k++;
+
+								}
+
+							}
+
+						}
+					
+			}
+
+			function isAdjacentEmpty(x, y){
+
+				if(x > 0 && blocks[x - 1][y].idNum == NONE)
+					return true;
+				else if(x < (worldWidth / blockWidth) - 1 && blocks[x + 1][y].idNum == NONE)
+					return true;
+				else if(y > 0 && blocks[x][y - 1].idNum == NONE)
+					return true;
+				else if(y < (worldHeight / blockHeight) - 1 && blocks[x][y + 1].idNum == NONE)
+					return true;
+
+				return false;
+
+			}
+
+			function fillAdjacent(x, y){
+
+				if(x > 0 && blocks[x - 1][y].idNum == NONE){
+
+					/*blocks[x - 1][y] = new Sprite(world, blockWidth, blockHeight, "images/Water.png", (x - 1) * blockWidth, y * blockHeight, (x - 1) * blockWidth, y * blockHeight, WATER);
+					blocks[x - 1][y].world.initGridSprite(blocks[x - 1][y]);*/
+					blocks[x - 1][y].setId(WATER);
+					blocks[x - 1][y].setImage("images/Water.png");
+					blocks[x - 1][y].reveal();
+				
+				}
+
+				if(x < (worldWidth / blockWidth) - 1 && blocks[x + 1][y].idNum == NONE){
+
+					/*blocks[x + 1][y] = new Sprite(world, blockWidth, blockHeight, "images/Water.png", (x + 1) * blockWidth, y * blockHeight, (x + 1) * blockWidth, y * blockHeight, WATER);
+					blocks[x + 1][y].world.initGridSprite(blocks[x + 1][y]);*/
+					blocks[x + 1][y].setId(WATER);
+					blocks[x + 1][y].setImage("images/Water.png");
+					blocks[x + 1][y].reveal();
+				
+				}
+
+				if(y > 0 && blocks[x][y - 1].idNum == NONE){
+
+					/*blocks[x][y - 1] = new Sprite(world, blockWidth, blockHeight, "images/Water.png", x * blockWidth, (y - 1) * blockHeight, x * blockWidth, (y - 1) * blockHeight, WATER);
+					blocks[x][y - 1].world.initGridSprite(blocks[x][y - 1]);*/
+					blocks[x][y - 1].setId(WATER);
+					blocks[x][y - 1].setImage("images/Water.png");
+					blocks[x][y - 1].reveal();
+				
+				}
+
+				if(y < (worldHeight / blockHeight) - 1 && blocks[x][y + 1].idNum == NONE){
+
+					/*blocks[x][y + 1] = new Sprite(world, blockWidth, blockHeight, "images/Water.png", x * blockWidth, (y + 1) * blockHeight, x * blockWidth, (y + 1) * blockHeight, WATER);
+					blocks[x][y + 1].world.initGridSprite(blocks[x][y + 1]);*/
+					blocks[x][y + 1].setId(WATER);
+					blocks[x][y + 1].setImage("images/Water.png");
+					blocks[x][y + 1].reveal();
+				
+				}
+
+			}
+
+			function scroll(shift, dimension){
+
+				var i, j;
+
+				if(dimension == 'x'){
+
+					for(i = 0; i < blocks.length; i++)
+						for(j = 0; j < blocks[i].length; j++)
+							if(blocks[i][j] != null)
+								blocks[i][j].scrollPosition(blocks[i][j].x - shift, blocks[i][j].y);
+
+					mob.scrollPosition(mob.x - shift, mob.y);
+				
+				}else{
+
+					for(i = 0; i < blocks.length; i++)
+						for(j = 0; j < blocks[i].length; j++)
+							if(blocks[i][j] != null)
+								blocks[i][j].scrollPosition(blocks[i][j].x, blocks[i][j].y - shift);
+
+					mob.scrollPosition(mob.x, mob.y - shift);
+
+				}
+
+			}
+
+		</script>
+
+	</head>
+
+	<body onload = "init()">
+
+	</body>
+
+</html>

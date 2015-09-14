@@ -1,0 +1,448 @@
+<!DOCTYPE HTML>
+<html lang = "en-US">
+
+	<head>
+
+		<meta charset = "UTF-8" />
+		<title>Metaphysical Warfare</title>
+		<div id="instructions">Instructions:<br \>This is a card game. You must best your opponent with the power of metaphysics. The rules are as follows:<br \>
+			                   1. You will have four cards in hand at any given time. Each card has a philosopher, topic, offensive value, and defensive value.<br \>
+			                   2. You select two cards each turn and their values are combined to deal damage to your opponent and prevent damage done to you.<br \>
+			                   3. Select a card by pressing the number shown. You may deselect your first card by pressing its number again.<br \>
+			                   4. The total values are doubled if both cards have the same philosopher or opposite philosophers (explained below).<br \>
+			                   5. A card's values can be negated if the opponent plays a card with a philosopher that counters yours (explained below).<br \>
+			                   6. Reduce your opponent's HP to 0 in order to win.<br \><br \>
+			                   The cycle of philosophers is: Hobbes -> Reid -> Descartes -> Dennett -> Hume -> Brandom -> Hobbes<br \>
+			                   Where each philosopher is countered by the one to their right and augments the one that is three places away.</div>
+		<link rel="stylesheet" type="text/css" href="style.css" media="screen" />
+
+		<script type = "text/javascript" src = "GameEngine.js"></script>
+		<script type = "text/javascript">
+
+			PLAYER1 = 1; HOBBES = 2; REID = 3; DESCARTES = 4; DENNETT = 5; HUME = 6; BRANDOM = 7; PLAYER2 = 8;
+			HOB1 = "Identity";
+			HOB2 = "Identity";
+			REI1 = "Identity";
+			REI2 = "Identity";
+			DES1 = "Mind";
+			DES2 = "Mind";
+			DEN1 = "Mind";
+			DEN2 = "Mind";
+			HUM1 = "Freedom";
+			HUM2 = "Freedom";
+			BRA1 = "Freedom";
+			BRA2 = "Freedom";
+
+			var world = null;
+			var worldWidth = 520;
+			var worldHeight = 400;
+			var canvasWidth = 520;
+			var canvasHeight = 400;
+			var tileWidth = 1;
+
+			var player = null;
+			var opponent = null;
+			var cards = new Array(12);
+
+			var turn = PLAYER1;
+			var win = false;
+			var lose = false;
+
+			var playerHP = 100;
+			var handSize = 4;
+			var pOneMove = new Array(2);
+			var pTwoMove = new Array(2);
+
+			function Player(){
+
+				var playerWidth = 1;
+				var playerHeight = 1;
+				var startX = 1;
+				var startY = 1;
+				var pickedCard = 0;
+
+				var pressedKeys = new Array(4);
+				var i;
+
+				var thePlayer = new AdvancedSprite(world, playerWidth, playerHeight, "images/Player.png", startX, startY, startX, startY, PLAYER1);
+				thePlayer.setHP(playerHP);
+				thePlayer.initInventory();
+				thePlayer.firstCard = 0;
+				thePlayer.secondCard = 0;
+
+				for(i = 0; i < pressedKeys.length; i++)
+					pressedKeys[i] = false;
+
+				thePlayer.keyActions = function(){
+
+					var context = world.canvas.getContext("2d");
+					var nextCard = 0;
+
+					context.font = "bold 10px arial";
+					context.fillStyle = "black";
+
+					if(keyPressed[ONE] && !pressedKeys[0]){
+
+						nextCard = 1;
+						pressedKeys[0] = true;
+
+					}else if(keyPressed[TWO] && !pressedKeys[1]){
+
+						nextCard = 2;
+						pressedKeys[1] = true;
+
+					}else if(keyPressed[THREE] && !pressedKeys[2]){
+
+						nextCard = 3;
+						pressedKeys[2] = true;
+						
+					}else if(keyPressed[FOUR] && !pressedKeys[3]){
+
+						nextCard = 4;
+						pressedKeys[3] = true;
+						
+					}
+
+					if(pickedCard == nextCard){
+
+						pickedCard = 0;
+
+					}else if(pickedCard == 0){
+
+						pickedCard = nextCard;
+
+					}else if(nextCard != 0){
+
+						this.firstCard = pickedCard - 1;
+						this.secondCard = nextCard - 1;
+						playMove(this.idNum);
+						pickedCard = 0;
+
+					}
+
+					if(pickedCard != 0)
+						context.fillText("Selected: " + pickedCard, 200, worldHeight - 100);
+
+					this.checkKeysUnpressed();
+
+				}
+
+				thePlayer.checkKeysUnpressed = function(){
+
+					if(pressedKeys[0] && !keyPressed[ONE])
+						pressedKeys[0] = false;
+
+					if(pressedKeys[1] && !keyPressed[TWO])
+						pressedKeys[1] = false;
+
+					if(pressedKeys[2] && !keyPressed[THREE])
+						pressedKeys[2] = false;
+
+					if(pressedKeys[3] && !keyPressed[FOUR])
+						pressedKeys[3] = false;
+
+				}
+
+				return thePlayer;
+
+			}
+
+			function Opponent(){
+
+				var opponentWidth = 1;
+				var opponentHeight = 1;
+				var startX = 1;
+				var startY = 1;
+
+				var theOpponent = new AdvancedSprite(world, opponentWidth, opponentHeight, "images/Player.png", startX, startY, startX, startY, PLAYER2);
+				theOpponent.setHP(playerHP);
+				theOpponent.initInventory();
+				theOpponent.firstCard = 0;
+				theOpponent.secondCard = 0;
+
+				theOpponent.selectMove = function(){
+
+					this.firstCard = Math.floor(Math.random() * 4);
+					do{
+
+						this.secondCard = Math.floor(Math.random() * 4);
+
+					}while(this.firstCard == this.secondCard);
+
+					playMove(this.idNum);
+
+				}
+
+				return theOpponent;
+
+			}
+
+			function Card(title, desc, id, attack, defense){
+
+				var theCard = new Item(desc, id);
+				theCard.title = title;
+				theCard.atk = attack;
+				theCard.def = defense;
+
+				return theCard;
+
+			}
+
+			function init(){
+
+				world = new World(worldWidth, worldHeight, canvasWidth, canvasHeight, tileWidth, "tan");
+				player = new Player();
+				opponent = new Opponent();
+				initCards();
+
+				world.start();
+
+			}
+
+			function initCards(){
+
+				var i;
+
+				cards[0] = new Card("Hobbes", HOB1, HOBBES, 4, 6);
+				cards[1] = new Card("Hobbes", HOB2, HOBBES, 2, 8);
+				cards[2] = new Card("Reid", REI1, REID, 5, 5);
+				cards[3] = new Card("Reid", REI2, REID, 7, 3);
+				cards[4] = new Card("Descartes", DES1, DESCARTES, 1, 9);
+				cards[5] = new Card("Descartes", DES2, DESCARTES, 3, 7);
+				cards[6] = new Card("Dennett", DEN1, DENNETT, 10, 0);
+				cards[7] = new Card("Dennett", DEN2, DENNETT, 8, 2);
+				cards[8] = new Card("Hume", HUM1, HUME, 9, 1);
+				cards[9] = new Card("Hume", HUM2, HUME, 6, 4);
+				cards[10] = new Card("Brandom", BRA1, BRANDOM, 0, 10);
+				cards[11] = new Card("Brandom", BRA2, BRANDOM, 5, 5);
+
+				for(i = 0; i < handSize; i++){
+
+					player.addToInventory(cards[Math.floor(Math.random() * cards.length)]);
+					opponent.addToInventory(cards[Math.floor(Math.random() * cards.length)]);
+
+				}
+
+			}
+
+			function update(){
+
+				var context = world.canvas.getContext("2d");
+				var i;
+
+				world.erase();
+
+				if(turn == PLAYER1)
+					player.keyActions();
+				else
+					opponent.selectMove();
+
+				updateHand();
+
+				context.font = "bold 15px arial";
+				context.fillStyle = "black";
+				context.fillText("Player 1 HP: " + player.getHP(), 10, 15);
+				context.fillText("Player 2 HP: " + opponent.getHP(), worldWidth - 150, 15);
+
+				context.font = "bold 30px arial";
+				context.fillStyle = "black";
+				if(win && lose)
+					context.fillText("It's a draw!", worldWidth / 6, worldHeight / 3);
+				else if(win)
+					context.fillText("You win!", worldWidth / 6, worldHeight / 3);
+				else if(lose)
+					context.fillText("You lose!", worldWidth / 6, worldHeight / 3);
+
+			}
+
+			function playMove(id){
+
+				if(id == PLAYER1){
+
+					pOneMove[0] = player.getItem(player.firstCard);
+					pOneMove[1] = player.getItem(player.secondCard);
+					turn = PLAYER2;
+
+				}else{
+
+					pTwoMove[0] = opponent.getItem(opponent.firstCard);
+					pTwoMove[1] = opponent.getItem(opponent.secondCard);
+					endTurn();
+					turn = PLAYER1;
+
+				}
+
+			}
+
+			function endTurn(){
+
+				var fCardCountered = false;
+				var sCardCountered = false;
+				var pOneAtk = 0;
+				var pOneDef = 0;
+				var pTwoAtk = 0;
+				var pTwoDef = 0;
+				var i;
+
+				//Calculate total attack and defense values for Player 1
+				fCardCountered = checkCounter(pOneMove[0], pTwoMove[0], pTwoMove[1]);
+				sCardCountered = checkCounter(pOneMove[1], pTwoMove[0], pTwoMove[1]);
+
+				if(!fCardCountered){
+
+					pOneAtk = pOneMove[0].atk;
+					pOneDef = pOneMove[0].def;
+
+				}
+
+				if(!sCardCountered){
+
+					pOneAtk = pOneAtk + pOneMove[1].atk;
+					pOneDef = pOneDef + pOneMove[1].def;
+				}
+
+				if((pOneMove[0].idNum == pOneMove[1].idNum || Math.abs(pOneMove[0].idNum - pOneMove[1].idNum) == 3) && !fCardCountered && !sCardCountered){
+
+					pOneAtk = pOneAtk * 2;
+					pOneDef = pOneDef * 2;
+
+				}
+
+				//Calculate total attack and defense values for Player 2
+				fCardCountered = checkCounter(pTwoMove[0], pOneMove[0], pOneMove[1]);
+				sCardCountered = checkCounter(pTwoMove[1], pOneMove[0], pOneMove[1]);
+
+				if(!fCardCountered){
+
+					pTwoAtk = pTwoMove[0].atk;
+					pTwoDef = pTwoMove[0].def;
+
+				}
+
+				if(!sCardCountered){
+
+					pTwoAtk = pTwoAtk + pTwoMove[1].atk;
+					pTwoDef = pTwoDef + pTwoMove[1].def;
+				}
+
+				if((pTwoMove[0].idNum == pTwoMove[1].idNum || Math.abs(pTwoMove[0].idNum - pTwoMove[1].idNum) == 3) && !fCardCountered && !sCardCountered){
+
+					pTwoAtk = pTwoAtk * 2;
+					pTwoDef = pTwoDef * 2;
+
+				}
+
+				if(pTwoAtk > pOneDef)
+					player.damage(pTwoAtk - pOneDef);
+				else
+					pTwoAtk = pOneDef;
+
+				if(pOneAtk > pTwoDef)
+					opponent.damage(pOneAtk - pTwoDef);
+				else
+					pOneAtk = pTwoDef;
+
+				window.alert("Your opponent played " + pTwoMove[0].title + " and " + pTwoMove[1].title +
+					         ".\nYou dealt " + (pOneAtk - pTwoDef) + " damage.\nYour opponent dealt " + (pTwoAtk - pOneDef) + " damage.");
+
+				if(player.getHP() <= 0)
+					lose = true;
+
+				if(opponent.getHP() <= 0)
+					win = true;
+
+				for(i = 0; i < 2; i++){
+
+					pOneMove[i] = null;
+					pTwoMove[i] = null;
+
+				}
+
+				discard();
+				draw();
+
+			}
+
+			function checkCounter(card, otherCard1, otherCard2){
+
+				var countered = false;
+
+				if(card.idNum == BRANDOM){
+
+					if(otherCard1.idNum == HOBBES || otherCard2.idNum == HOBBES)
+						countered = true;
+
+				}else if(card.idNum == otherCard1.idNum - 1 || card.idNum == otherCard2.idNum - 1){
+
+					countered = true;
+
+				}
+
+				return countered;
+
+			}
+
+			function discard(){
+
+				player.removeFromInventory(player.firstCard);
+				player.removeFromInventory(player.secondCard);
+				
+				opponent.removeFromInventory(opponent.firstCard);
+				opponent.removeFromInventory(opponent.secondCard);
+
+			}
+
+			function draw(){
+
+				var i;
+
+				for(i = 0; i < 2; i++){
+
+					player.addToInventory(cards[Math.floor(Math.random() * cards.length)]);
+					opponent.addToInventory(cards[Math.floor(Math.random() * cards.length)]);
+
+				}
+
+			}
+
+			function updateHand(){
+
+				var cardWidth = 130;
+				var cardHeight = 130;
+				var startY = 150;
+				var i;
+
+				for(i = 0; i < handSize; i++)
+					updateCard(player.getItem(i), cardWidth * i, cardWidth, startY, cardHeight, i + 1);
+
+			}
+
+			function updateCard(card, startX, width, startY, height, cardNum){
+
+				var context = world.canvas.getContext("2d");
+				var yIncrement = 14;
+
+				context.lineWidth = 5;
+				context.strokeStyle = "blue";
+				context.strokeRect(startX, startY, width, height);
+
+				context.font = "bold 13px arial";
+				context.fillStyle = "black";
+
+				context.fillText(cardNum, startX + 5, startY + yIncrement);
+				context.fillText(card.title, startX + 5, startY + (2 * yIncrement));
+				context.fillText(card.description, startX + 5, startY + (3 * yIncrement));
+				context.fillText("Attack Value: " + card.atk, startX + 5, startY + (4 * yIncrement));
+				context.fillText("Defense Value: " + card.def, startX + 5, startY + (5 * yIncrement));
+
+			}
+
+		</script>
+
+	</head>
+
+	<body onload = "init()">
+
+	</body>
+
+</html>

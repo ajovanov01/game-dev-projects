@@ -1,0 +1,524 @@
+<!DOCTYPE HTML>
+<html lang = "en-US">
+
+	<head>
+
+		<meta charset = "UTF-8" />
+		<title>SRPG Battle</title>
+		<div id="instructions">Instructions:<br \>This is a turn-based battle. Use the arrow keys to move. The Z and X keys are used to attack.<br \>
+			                   Z will strike any enemy next to you and X is a weaker attack than Z but hits 3 times as far.</div>
+		<link rel="stylesheet" type="text/css" href="style.css" media="screen" />
+
+		<script type = "text/javascript" src = "GameEngine.js"></script>
+		<script type = "text/javascript">
+
+			PLAYER = 1; MOB1 = 2; MOB2 = 3; TILE = -1; HIGHLIGHT = -2;
+			FACE_DOWN = 0; FACE_LEFT = 1; FACE_RIGHT = 2; FACE_UP = 3;
+			MOB = 2;
+
+			var world = null;
+			var worldWidth = 520;
+			var worldHeight = 400;
+			var canvasWidth = 520;
+			var canvasHeight = 400;
+			var tileWidth = 40;
+
+			var player = null;
+			var tiles = null;
+			var rowTiles = 8;
+			var mobs = null;
+			var numMobs = 4;
+			var deadMobs = 0;
+
+			var turn = PLAYER;
+			var lose = false;
+
+			function Player(){
+
+				var playerWidth = 40;
+				var playerHeight = 40;
+				var startX = 4;
+				var startY = 8;
+				var hitPoints = 300;
+				var moving = false;
+				var attacking = false;
+
+				var thePlayer = new Destructible(world, playerWidth, playerHeight, "images/Player.png", startX, startY, startX, startY, PLAYER, hitPoints);
+				thePlayer.world.initGridSprite(thePlayer);
+
+				thePlayer.keyActions = function(){
+
+					var playerX = this.getX() - 1;
+					var playerY = this.getY() - 1;
+					var i;
+
+					if(turn == PLAYER){
+
+						if(!moving && keyPressed[LEFT] && playerX > 1 && world.getGridVal(playerX - 1, playerY) == null){
+
+							this.moveX(-1);
+							this.changeWorldPosition();
+							turn = MOB;
+							moving = true;
+
+						}else if(!moving && keyPressed[RIGHT] && playerX < 8 && world.getGridVal(playerX + 1, playerY) == null){
+
+							this.moveX(1);
+							this.changeWorldPosition();
+							turn = MOB;
+							moving = true;
+
+						}else if(!moving && keyPressed[UP] && playerY > 1 && world.getGridVal(playerX, playerY - 1) == null){
+
+							this.moveY(-1);
+							this.changeWorldPosition();
+							turn = MOB;
+							moving = true;
+
+						}else if(!moving && keyPressed[DOWN] && playerY < 8 && world.getGridVal(playerX, playerY + 1) == null){
+
+							this.moveY(1);
+							this.changeWorldPosition();
+							turn = MOB;
+							moving = true;
+
+						}else if(!attacking && keyPressed[Z]){
+
+							attacking = true;
+							unhighlight();
+							if(playerX > 0){
+
+								tiles[playerX - 1][playerY].setImage("images/Highlight.png");
+								tiles[playerX - 1][playerY].setId(HIGHLIGHT);
+								drawTile(playerX - 1, playerY);
+
+							}if(playerX < 7){
+
+								tiles[playerX + 1][playerY].setImage("images/Highlight.png");
+								tiles[playerX + 1][playerY].setId(HIGHLIGHT);
+								drawTile(playerX + 1, playerY);
+
+							}
+							if(playerY > 0){
+
+								tiles[playerX][playerY - 1].setImage("images/Highlight.png");
+								tiles[playerX][playerY - 1].setId(HIGHLIGHT);
+								drawTile(playerX, playerY - 1);
+
+							}
+							if(playerY < 7){
+
+								tiles[playerX][playerY + 1].setImage("images/Highlight.png");
+								tiles[playerX][playerY + 1].setId(HIGHLIGHT);
+								drawTile(playerX, playerY + 1);
+
+							}
+							this.attack(40);
+
+							turn = MOB;
+
+						}else if(!attacking && keyPressed[X]){
+
+							attacking = true;
+							unhighlight();
+							for(i = 1; i < 4; i++){
+
+								if(playerX - i >= 0){
+
+									tiles[playerX - i][playerY].setImage("images/Highlight.png");
+									tiles[playerX - i][playerY].setId(HIGHLIGHT);
+									drawTile(playerX - i, playerY);
+
+								}
+								if(playerX + i <= 7){
+
+									tiles[playerX + i][playerY].setImage("images/Highlight.png");
+									tiles[playerX + i][playerY].setId(HIGHLIGHT);
+									drawTile(playerX + i, playerY);
+
+								}
+								if(playerY - i >= 0){
+
+									tiles[playerX][playerY - i].setImage("images/Highlight.png");
+									tiles[playerX][playerY - i].setId(HIGHLIGHT);
+									drawTile(playerX, playerY - i);
+
+								}
+								if(playerY + i <= 7){
+
+									tiles[playerX][playerY + i].setImage("images/Highlight.png");
+									tiles[playerX][playerY + i].setId(HIGHLIGHT);
+									drawTile(playerX, playerY + i);
+
+								}
+
+							}
+							this.attack(20);
+
+							turn = MOB;
+
+						}
+
+					}
+
+					if(moving && !keyPressed[LEFT] && !keyPressed[RIGHT] && !keyPressed[UP] && !keyPressed[DOWN])
+						moving = false;
+
+					if(attacking && !keyPressed[Z] && !keyPressed[X])
+						attacking = false;
+
+				}
+
+				thePlayer.attack = function(atkDamage){
+
+					var mobX, mobY;
+					var i;
+
+					for(i = 0; i < numMobs; i++){
+
+						if(mobs[i] != null){
+
+							mobX = mobs[i].getX();
+							mobY = mobs[i].getY();
+							if(tiles[mobX - 1][mobY - 1].idNum == HIGHLIGHT){
+
+								mobs[i].damage(atkDamage);
+								if(mobs[i].getHP() <= 0){
+
+									mobs[i].destroy();
+									deadMobs++;
+
+								}
+
+							}
+
+						}
+
+					}
+
+				}
+
+				return thePlayer;
+
+			}
+
+			function Mob(startRX, startRY, id, image, hitPoints){
+
+				var mobWidth = 40;
+				var mobHeight = 40;
+				var animOrder = [1, 0, 1, 2];
+
+				var theMob = new Destructible(world, mobWidth, mobHeight, image, startRX, startRY, startRX, startRY, id, hitPoints);
+				theMob.world.initGridSprite(theMob);
+
+				theMob.inAttackRange = function(){
+
+					var mobX = this.getX();
+					var mobY = this.getY();
+
+					if(mobX - 1 >= 1 && world.getGridVal(mobX - 1, mobY) != null && world.getGridVal(mobX - 1, mobY).idNum == PLAYER){
+
+						return true;
+
+					}else if(mobX + 1 <= 8 && world.getGridVal(mobX + 1, mobY) != null && world.getGridVal(mobX + 1, mobY).idNum == PLAYER){
+
+						return true;
+
+					}else if(mobY - 1 >= 1 && world.getGridVal(mobX, mobY - 1) != null && world.getGridVal(mobX, mobY - 1).idNum == PLAYER){
+
+						return true;
+
+					}else if(mobY + 1 <= 8 && world.getGridVal(mobX, mobY + 1) != null && world.getGridVal(mobX, mobY + 1).idNum == PLAYER){
+
+						return true;
+
+					}
+
+					if(this.idNum == MOB2){
+
+						if((mobX - 2 >= 1 && world.getGridVal(mobX - 2, mobY) != null && world.getGridVal(mobX - 2, mobY).idNum == PLAYER) ||
+						   (mobX - 3 >= 1 && world.getGridVal(mobX - 3, mobY) != null && world.getGridVal(mobX - 3, mobY).idNum == PLAYER)){
+
+							return true;
+
+						}else if((mobX + 2 <= 8 && world.getGridVal(mobX + 2, mobY) != null && world.getGridVal(mobX + 2, mobY).idNum == PLAYER) ||
+							    (mobX + 3 <= 8 && world.getGridVal(mobX + 3, mobY) != null && world.getGridVal(mobX + 3, mobY).idNum == PLAYER)){
+
+							return true;
+
+						}else if((mobY - 2 >= 1 && world.getGridVal(mobX, mobY - 2) != null && world.getGridVal(mobX, mobY - 2).idNum == PLAYER) ||
+							    (mobY - 3 >= 1 && world.getGridVal(mobX, mobY - 3) != null && world.getGridVal(mobX, mobY - 3).idNum == PLAYER)){
+
+							return true;
+
+						}else if((mobY + 2 <= 8 && world.getGridVal(mobX, mobY + 2) != null && world.getGridVal(mobX, mobY + 2).idNum == PLAYER) ||
+							    (mobY + 3 <= 8 && world.getGridVal(mobX, mobY + 3) != null && world.getGridVal(mobX, mobY + 3).idNum == PLAYER)){
+
+							return true;
+
+						}
+
+					}
+
+					return false;
+
+				}
+
+				theMob.attack = function(){
+
+					if(this.idNum == MOB1)
+						player.damage(20);
+					else
+						player.damage(10);
+
+					if(player.getHP() <= 0)
+						lose = true;
+
+				}
+
+				return theMob;
+
+			}
+
+			function init(){
+
+				world = new World(worldWidth, worldHeight, canvasWidth, canvasHeight, tileWidth, "grey");
+				player = new Player();
+				initTiles();
+				initMobs();
+
+				world.start();
+
+			}
+
+			function initTiles(){
+
+				var i, j;
+				var tileWidth = 40;
+				var tileHeight = 40;
+
+				tiles = new Array(rowTiles);
+				for(i = 0; i < rowTiles; i++){
+
+					tiles[i] = new Array(rowTiles);
+					for(j = 0; j < rowTiles; j++)
+						tiles[i][j] = new Sprite(world, tileWidth, tileHeight, "images/Tile.png", i + 1, j + 1, i + 1, j + 1, TILE);
+
+				}
+
+			}
+
+			function initMobs(){
+
+				var mobType = 0;
+				var image = "";
+				var hitPoints = 0;
+				var i;
+
+				mobs = new Array(numMobs);
+				for(i = 0; i < numMobs; i++){
+
+					mobType = Math.floor(Math.random() * 2) + 1;
+					if(mobType == 1){
+
+						image = "images/Mob1.png";
+						hitPoints = 150;
+
+					}else{
+
+						image = "images/Mob2.png";
+						hitPoints = 120;
+
+					}
+
+					mobs[i] = new Mob(i + 3, 1, mobType + 1, image, hitPoints);
+
+				}
+
+			}
+
+			function update(){
+
+				var offset = 20;
+				var xOffset = (player.getY() * offset) - (player.getX() * offset) * 0.30;
+				var yOffset = (player.getX() * offset) * 0.75 + (player.getY() * offset * 1.25);
+				var context = world.canvas.getContext("2d");
+				var i;
+
+				world.erase();
+
+				player.keyActions();
+				updateTiles();
+				updateMobs();
+
+				player.drawIso(0.5, 1, null, xOffset, yOffset, 30, (worldHeight / 4) + 20);
+
+				if(deadMobs == numMobs){
+
+					context.font = "bold 30px arial";
+					context.fillStyle = "black";
+					context.fillText("You win!", worldWidth / 6, worldHeight / 3);
+
+					world.stop();
+
+				}
+
+				if(lose){
+
+					context.font = "bold 30px arial";
+					context.fillStyle = "black";
+					context.fillText("You lose!", worldWidth / 6, worldHeight / 3);
+
+					world.stop();
+
+				}
+
+				context.font = "bold 10px arial";
+				context.fillStyle = "black";
+				context.fillText("Player HP: " + player.getHP(), 10, 10);
+
+				for(i = 0; i < numMobs; i++){
+
+					if(mobs[i] != null){
+
+						context.font = "bold 10px arial";
+						context.fillStyle = "black";
+						context.fillText("Mob " + (i + 1) + " HP: " + mobs[i].getHP(), worldWidth - 80, 10 * (i + 1));
+
+					}else{
+
+						context.font = "bold 10px arial";
+						context.fillStyle = "black";
+						context.fillText("Mob " + (i + 1) + " HP: 0", worldWidth - 80, 10 * (i + 1));
+
+					}
+
+				}
+
+			}
+
+			function updateTiles(){
+
+				var i, j;
+				var offset = 20;
+
+				for(i = 0; i < rowTiles; i++)
+					for(j = 0; j < rowTiles; j++)
+						tiles[i][j].drawIso(1, 0.5, 45, (j * offset) - (i * offset) * 0.30, (i * offset) * 0.75 + (j * offset * 1.25), 10, worldHeight / 4);
+
+			}
+
+			function updateMobs(){
+
+				var actionDir = "";
+				var offset = 20;
+				var xOffset = 0;
+				var yOffset = 0;
+				var mobX, mobY;
+				var i;
+
+				for(i = 0; i < numMobs; i++){
+
+					if(mobs[i] != null){
+
+						if(!mobs[i].alive){
+
+							mobs[i] = null;
+
+						}else{
+
+							if(turn == MOB){
+
+								if(mobs[i].inAttackRange()){
+
+									mobs[i].attack();
+
+								}else{
+
+									mobX = mobs[i].getX();
+									mobY = mobs[i].getY();
+									if(mobY < player.getY()){
+
+										if(mobY + 1 <= 8 && world.getGridVal(mobX, mobY + 1) == null){
+
+											mobs[i].moveY(1);
+
+										}else{
+
+											if(mobX + 1 <= 8 && world.getGridVal(mobX + 1, mobY) == null)
+												mobs[i].moveX(1);
+											else if(mobX - 1 >= 1 && world.getGridVal(mobX - 1, mobY) == null)
+												mobs[i].moveX(-1);
+
+										}
+
+									}else if(mobX > player.getX()){
+
+										if(mobX - 1 >= 1 && world.getGridVal(mobX - 1, mobY) == null)
+											mobs[i].moveX(-1);
+										else
+											if(mobY + 1 <= 8 && world.getGridVal(mobX, mobY + 1) == null)
+												mobs[i].moveY(1);
+
+									}else if(mobX < player.getX()){
+
+										if(mobX + 1 <= 8 && world.getGridVal(mobX + 1, mobY) == null)
+											mobs[i].moveX(1);
+										else
+											if(mobY + 1 <= 8 && world.getGridVal(mobX, mobY + 1) == null)
+												mobs[i].moveY(1);
+
+									}
+									mobs[i].changeWorldPosition();
+
+								}
+
+							}
+
+							xOffset = (mobs[i].getY() * offset) - (mobs[i].getX() * offset) * 0.30;
+							yOffset = (mobs[i].getX() * offset) * 0.75 + (mobs[i].getY() * offset * 1.25);
+							mobs[i].drawIso(0.5, 1, null, xOffset, yOffset, 30, (worldHeight / 4) + 20);
+
+						}
+
+					}
+
+				}
+
+				if(turn == MOB)
+					turn = PLAYER;
+
+			}
+
+			function drawTile(i, j){
+
+				var offset = 20;
+
+				tiles[i][j].drawIso(1, 0.5, 45, (j * offset) - (i * offset) * 0.30, (i * offset) * 0.75 + (j * offset * 1.25), 10, worldHeight / 4);
+
+			}
+
+			function unhighlight(){
+
+				var i, j;
+
+				for(i = 0; i < rowTiles; i++)
+					for(j = 0; j < rowTiles; j++)
+						if(tiles[i][j].idNum == HIGHLIGHT){
+
+							tiles[i][j].setImage("images/Tile.png");
+							tiles[i][j].setId(TILE);
+
+						}
+
+			}
+
+		</script>
+
+	</head>
+
+	<body onload = "init()">
+
+	</body>
+
+</html>

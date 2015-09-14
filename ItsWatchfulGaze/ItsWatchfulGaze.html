@@ -1,0 +1,308 @@
+<!DOCTYPE HTML>
+<html lang = "en-US">
+
+	<head>
+
+		<meta charset = "UTF-8" />
+		<title>Its Watchful Gaze</title>
+		<div id="result"></div>
+		<div id="instructions">Instructions:<br \>Move right until you reach the shack at the end while staying
+			                   out of the Eye's sight. It will open periodically (min. 4s). If you are out
+			                   in the open when it does, you lose.<br \>Controls:<br \>Move - left/right arrow keys.
+			                   <br \>Hide/Emerge - spacebar when you are near something to hide behind.</div>
+		<link rel="stylesheet" type="text/css" href="style.css" media="screen" />
+
+		<script type = "text/javascript" src = "GameEngine.js"></script>
+		<script type = "text/javascript">
+
+			PLAYER = -1; EYE = -2; TREE = 1; ROCK = 2; BUSH = 3; SHACK = 4;
+			FACE_LEFT = 1; FACE_RIGHT = 2;
+
+			var world;
+			var worldWidth = 5000;
+			var worldHeight = 600;
+			var canvasWidth = 800;
+			var canvasHeight = 600;
+			var tileWidth = 1;
+
+			var player;
+			var theEye;
+			var environment;
+
+			var playTimer;
+			var eyeTimer;
+			var eyeOpen = false;
+
+			function Player(){
+
+				var playerWidth = 75;
+				var playerHeight = 75;
+				var moveDistance = 10;
+				var spaceEnabled = true;
+				var animOrder = [1, 0, 1, 2];
+
+				var thePlayer = new Sprite(world, playerWidth, playerHeight, "images/$Player.png", 10, canvasHeight - playerHeight, PLAYER);
+				thePlayer.setAnimation(32, 32, 96, 128, 200, animOrder);
+				thePlayer.animTimer.startAnimCount();
+				thePlayer.setCurrentRow(FACE_RIGHT);
+
+				thePlayer.keyActions = function(){
+
+					if(keyPressed == LEFT && this.visible){
+
+						if(this.relativeX < world.canvas.width / 2 || this.relativeX >= world.width - (world.canvas.width / 2)){
+
+							this.moveX(moveDistance * -1);
+
+						}else{
+
+							scroll(moveDistance * -1, 'x');
+							this.relativeX -= moveDistance;
+
+						}
+
+						this.setCurrentRow(FACE_LEFT);
+
+					}
+
+					if(keyPressed == RIGHT && this.visible){
+
+						if(this.relativeX < world.canvas.width / 2 || this.relativeX >= world.width - (world.canvas.width / 2)){
+
+							this.moveX(moveDistance);
+
+						}else{
+
+							scroll(moveDistance, 'x');
+							this.relativeX += moveDistance;
+
+						}
+
+						this.setCurrentRow(FACE_RIGHT);
+
+					}
+
+					if(keyPressed == SPACE && spaceEnabled){
+
+						spaceEnabled = false;
+						if(this.visible && isHidingPlace())
+							this.conceal();
+						else
+							this.reveal();
+
+					}
+
+					if(!spaceEnabled && keyPressed == null)
+						spaceEnabled = true;
+
+				}
+
+				return thePlayer;
+
+			}
+
+			function init(){
+
+				var startTime = Math.floor((Math.random() * 6) + 4);
+
+				world = new World(worldWidth, worldHeight, canvasWidth, canvasHeight, tileWidth, "blue");
+				player = new Player();
+				initEye();
+				initEnvironment();
+
+				playTimer = new Timer(0, 0, 1000);
+				eyeTimer = new Timer(startTime, 0, 1000);
+				
+				world.start();
+				playTimer.startCountUp();
+				eyeTimer.startCountDown();
+
+			}
+
+			function initEye(){
+
+				var eyeWidth = 250;
+				var eyeHeight = 250;
+
+				theEye = new Sprite(world, eyeWidth, eyeHeight, "images/EyeClosed.png", (canvasWidth / 2) - (eyeWidth / 2), 10, EYE);
+
+			}
+
+			function initEnvironment(){
+
+				var envWidth = 100;
+				var envHeight = 0;
+				var envImage = "";
+				var randEnv = 0;
+				var numEnv = worldWidth / envWidth;
+				var i;
+
+				environment = [];
+				for(i = 0; i < numEnv - 1; i++){
+
+					randEnv = Math.floor((Math.random() * 6) + 1);
+					if(randEnv < 4){
+
+						if(randEnv == 1){
+
+							envHeight = 200;
+							envImage = "images/Tree.png";
+
+						}else if(randEnv == 2){
+
+							envHeight = 100;
+							envImage = "images/Rock.png";
+
+						}else{
+
+							envHeight = 60;
+							envImage = "images/Bush.png";
+
+						}
+
+						environment.push(new Sprite(world, envWidth, envHeight, envImage, envWidth * i, worldHeight - envHeight, randEnv));
+
+					}
+
+				}
+
+				environment.push(new Sprite(world, envWidth, 140, "images/Shack.png", worldWidth - envWidth, worldHeight - 140, SHACK));
+
+			}
+
+			function update(){
+
+				var win = false;
+				var lose = false;
+				var endTime = "";
+				var resultDiv;
+
+				world.erase();
+
+				player.keyActions();
+				updateEye();
+				updateEnvironment();
+				player.update();
+
+				win = checkWinConditions();
+				if(win){
+
+					endTime = Math.floor(playTimer.getElapsedTime() / 60) + " minutes and " + (playTimer.getElapsedTime() % 60) + " seconds";
+					resultDiv = document.getElementById("result");
+					resultDiv.textContent = "You made it to safety in " + endTime + "!";
+
+					world.stop();
+					playTimer.stop();
+					eyeTimer.stop();
+
+				}
+
+				lose = checkLoseConditions();
+				if(lose){
+
+					resultDiv = document.getElementById("result");
+					resultDiv.style.color = "Red";
+					resultDiv.textContent = "You didn't make it...";
+
+					world.stop();
+					playTimer.stop();
+					eyeTimer.stop();
+					player.animTimer.stop();
+
+				}
+
+			}
+
+			function scroll(shift, dimension){
+
+				if(dimension == 'x')
+					for(i = 0; i < environment.length; i++)
+						environment[i].scrollPosition(environment[i].x - shift, environment[i].y);
+				else
+					for(i = 0; i < environment.length; i++)
+						environment[i].scrollPosition(environment[i].x, environment[i].y - shift);
+
+			}
+
+			function isHidingPlace(){
+
+				var hidingPlace = false;
+				var relX = player.getRelativeX();
+				var relY = player.getRelativeY();
+
+				if(world.getGridVal(relX + Math.floor(player.width / 4), relY + player.height - 1) != 0 ||
+				   world.getGridVal(relX + 3 * Math.floor(player.width / 4), relY + player.height - 1) != 0)
+					hidingPlace = true;
+
+				return hidingPlace;
+
+			}
+
+			function updateEye(){
+
+				var startTime = 0;
+
+				if(eyeTimer.getCurrentTime() == 0){
+
+					if(eyeOpen){
+
+						eyeOpen = false;
+						theEye.setImage("images/EyeClosed.png");
+						startTime = Math.floor((Math.random() * 6) + 4);
+
+					}else{
+
+						eyeOpen = true;
+						theEye.setImage("images/EyeOpen.png");
+						startTime = 2;
+
+					}
+
+					eyeTimer.setCurrentTime(startTime);
+
+				}
+
+				theEye.update();
+
+			}
+
+			function updateEnvironment(){
+
+				for(i = 0; i < environment.length; i++)
+					environment[i].update();
+
+			}
+
+			function checkWinConditions(){
+
+				var win = false;
+				var relX = player.getRelativeX();
+				var relY = player.getRelativeY();
+
+				if(world.getGridVal(relX + player.width, relY + player.height - 1) == SHACK)
+					win = true;
+
+				return win;
+
+			}
+
+			function checkLoseConditions(){
+
+				var lose = false;
+
+				if(player.visible && eyeOpen)
+					lose = true;
+
+				return lose;
+
+			}
+
+		</script>
+
+	</head>
+
+	<body onload = "init()">
+
+	</body>
+
+</html>
